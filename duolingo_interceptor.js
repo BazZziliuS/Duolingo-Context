@@ -21,11 +21,16 @@
   const _origFetch = window.fetch.bind(window);
 
   window.fetch = async function (...args) {
+    const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url ?? '');
+
+    // Пропускать сторонние запросы (реклама, аналитика) без перехвата
+    if (!isDuolingoUrl(url)) {
+      return _origFetch(...args);
+    }
+
     const response = await _origFetch(...args);
 
     try {
-      const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url ?? '');
-      // Перехватывать любые запросы — Duolingo делает fetch к своим же эндпоинтам
       const clone = response.clone();
       const text = await clone.text();
       tryExtractAndPost(text, url);
@@ -47,13 +52,22 @@
   };
 
   XMLHttpRequest.prototype.send = function (...args) {
-    this.addEventListener('load', function () {
-      try {
-        tryExtractAndPost(this.responseText, this.__duoUrl || '');
-      } catch (_) {}
-    });
+    if (isDuolingoUrl(this.__duoUrl || '')) {
+      this.addEventListener('load', function () {
+        try {
+          tryExtractAndPost(this.responseText, this.__duoUrl || '');
+        } catch (_) {}
+      });
+    }
     return _origXHRSend.call(this, ...args);
   };
+
+  function isDuolingoUrl(url) {
+    if (!url) return false;
+    // Относительные URL — всегда внутренние
+    if (url.startsWith('/') || url.startsWith('./')) return true;
+    return url.includes('duolingo.com');
+  }
 
   // ──────────────────────────────────────────────
   // Fallback: window.__NEXT_DATA__ и Redux store
