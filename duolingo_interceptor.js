@@ -30,11 +30,17 @@
 
     const response = await _origFetch(...args);
 
-    try {
-      const clone = response.clone();
-      const text = await clone.text();
-      tryExtractAndPost(text, url);
-    } catch (_) {}
+    // Читать тело только у успешных JSON-ответов
+    if (response.ok) {
+      const ct = response.headers.get('content-type') || '';
+      if (ct.includes('json') || ct.includes('javascript')) {
+        try {
+          const clone = response.clone();
+          const text = await clone.text();
+          tryExtractAndPost(text, url);
+        } catch (_) {}
+      }
+    }
 
     return response;
   };
@@ -64,9 +70,14 @@
 
   function isDuolingoUrl(url) {
     if (!url) return false;
-    // Относительные URL — всегда внутренние
-    if (url.startsWith('/') || url.startsWith('./')) return true;
-    return url.includes('duolingo.com');
+    try {
+      // new URL с базой текущей страницы корректно разбирает относительные,
+      // протокол-относительные (//example.com) и абсолютные URL
+      const { hostname } = new URL(url, location.href);
+      return hostname === 'duolingo.com' || hostname.endsWith('.duolingo.com');
+    } catch (_) {
+      return false;
+    }
   }
 
   // ──────────────────────────────────────────────
