@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<!--
+  popup.html — интерфейс расширения, открывается по клику на иконку.
+  Три вкладки: Словарь, Настройки, Статистика.
+-->
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Duolingo Context</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+
+  <!-- Шапка -->
+  <header class="header">
+    <div class="header-logo">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="12" fill="#58cc02"/>
+        <path d="M7 12l3 3 7-7" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="header-title">Duolingo Context</span>
+    </div>
+    <div class="header-count" id="wordCount">0 слов</div>
+  </header>
+
+  <!-- Вкладки -->
+  <nav class="tabs">
+    <button class="tab-btn tab-active" data-tab="vocab">Словарь</button>
+    <button class="tab-btn" data-tab="settings">Настройки</button>
+    <button class="tab-btn" data-tab="stats">Статистика</button>
+  </nav>
+
+  <!-- ────────── ВКЛАДКА: Словарь ────────── -->
+  <div class="tab-panel" id="tab-vocab">
+
+    <div class="sync-row">
+      <button class="btn-primary" id="syncBtn">Синхронизировать</button>
+      <span class="sync-status" id="syncStatus"></span>
+    </div>
+    <div class="sync-hint">Откроет страницу слов Duolingo и захватит словарь автоматически</div>
+
+    <!-- Сообщение если не авторизован -->
+    <div class="auth-warning hidden" id="authWarning">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="10" stroke="#ff9600" stroke-width="2"/>
+        <path d="M12 8v4M12 16h.01" stroke="#ff9600" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span>Войдите в <a href="https://www.duolingo.com" target="_blank">Duolingo</a> и повторите попытку</span>
+    </div>
+
+    <!-- Поиск по словарю -->
+    <div class="search-row">
+      <input type="text" class="search-input" id="searchInput" placeholder="Найти слово...">
+    </div>
+
+    <!-- Таблица слов -->
+    <div class="word-list-wrapper">
+      <table class="word-table">
+        <thead>
+          <tr>
+            <th>Слово</th>
+            <th>Перевод</th>
+          </tr>
+        </thead>
+        <tbody id="wordTableBody">
+          <!-- Строки генерируются в popup.js -->
+        </tbody>
+      </table>
+      <div class="empty-state hidden" id="emptyState">
+        Словарь пуст. Нажмите «Синхронизировать».
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ────────── ВКЛАДКА: Настройки ────────── -->
+  <div class="tab-panel hidden" id="tab-settings">
+
+    <div class="settings-group">
+      <div class="setting-row">
+        <div class="setting-label">
+          <span class="setting-name">Подсветка слов</span>
+          <span class="setting-desc">Включить отображение слов на страницах</span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="toggleEnabled" checked>
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-label">
+          <span class="setting-name">Только текущий урок</span>
+          <span class="setting-desc">Показывать слова только из последнего урока</span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="toggleCurrentLesson">
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-label">
+          <span class="setting-name">Автосинхронизация</span>
+          <span class="setting-desc">Синхронизировать при открытии Duolingo</span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="toggleAutoSync" checked>
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <div class="setting-row setting-row--vertical">
+        <div class="setting-label">
+          <span class="setting-name">Интенсивность подсветки</span>
+        </div>
+        <div class="intensity-buttons">
+          <button class="intensity-btn" data-intensity="weak">Слабая</button>
+          <button class="intensity-btn intensity-active" data-intensity="medium">Средняя</button>
+          <button class="intensity-btn" data-intensity="strong">Яркая</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <div class="setting-row setting-row--vertical">
+        <div class="setting-label">
+          <span class="setting-name">Изучаемый язык</span>
+          <span class="setting-desc">Влияет на правила поиска слов на странице</span>
+        </div>
+        <select id="languageSelect" class="lang-select">
+          <option value="en">🇬🇧 Английский</option>
+          <option value="es">🇪🇸 Испанский</option>
+          <option value="fr">🇫🇷 Французский</option>
+          <option value="de">🇩🇪 Немецкий</option>
+          <option value="it">🇮🇹 Итальянский</option>
+          <option value="pt">🇵🇹 Португальский</option>
+          <option value="nl">🇳🇱 Нидерландский</option>
+          <option value="pl">🇵🇱 Польский</option>
+          <option value="sv">🇸🇪 Шведский</option>
+          <option value="tr">🇹🇷 Турецкий</option>
+          <option value="ru">🇷🇺 Русский</option>
+          <option value="uk">🇺🇦 Украинский</option>
+          <option value="ja">🇯🇵 Японский</option>
+          <option value="zh">🇨🇳 Китайский</option>
+          <option value="ko">🇰🇷 Корейский</option>
+          <option value="ar">🇸🇦 Арабский</option>
+          <option value="hi">🇮🇳 Хинди</option>
+        </select>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ────────── ВКЛАДКА: Статистика ────────── -->
+  <div class="tab-panel hidden" id="tab-stats">
+
+    <div class="stat-card">
+      <div class="stat-value" id="statWordsToday">0</div>
+      <div class="stat-label">слов встречено сегодня</div>
+    </div>
+
+    <div class="section-title">Топ-5 слов</div>
+    <ul class="top-words-list" id="topWordsList">
+      <!-- Генерируется в popup.js -->
+    </ul>
+
+    <div class="section-title">По урокам</div>
+    <div class="lesson-bars" id="lessonBars">
+      <!-- Генерируется в popup.js -->
+    </div>
+
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

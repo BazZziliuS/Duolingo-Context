@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "Duolingo Context",
+  "version": "1.1.0",
+  "description": "Подсвечивает слова из словаря Duolingo на любых веб-страницах",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "https://www.duolingo.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "128": "icons/icon128.png"
+    },
+    "default_title": "Duolingo Context"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "exclude_matches": [
+        "https://www.duolingo.com/*",
+        "https://duolingo.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.duolingo.com/practice-hub/words*"],
+      "js": ["duolingo_interceptor.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.duolingo.com/practice-hub/words*"],
+      "js": ["duolingo_relay.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "128": "icons/icon128.png"
+  }
+}

@@ -1,0 +1,21 @@
+# Утилиты генерации иконки (не нужны в продакшне)
+make-icon.js
+generate-icon.js
+icons/icon.svg
+
+# Node
+node_modules/
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Временные файлы
+*.log
+*.tmp
