@@ -1,6 +1,6 @@
 /**
- * duolingo_interceptor.js — работает в MAIN world на странице practice-hub/words.
- * Перехватывает fetch и XHR, ищет в ответах данные словаря,
+ * duolingo_interceptor.js — работает в MAIN world на ВСЕХ страницах duolingo.com.
+ * Перехватывает fetch и XHR, ищет в ответах данные словаря из любого эндпоинта,
  * передаёт результат в ISOLATED world через window.postMessage.
  *
  * Запускается в MAIN world (доступ к window страницы), поэтому chrome.runtime недоступен.
@@ -10,6 +10,9 @@
   'use strict';
 
   const MSG_KEY = '__duoCtxVocab__';
+
+  // Минимальное количество слов чтобы считать ответ словарём
+  const MIN_WORDS = 2;
 
   // ──────────────────────────────────────────────
   // Перехват fetch
@@ -22,11 +25,10 @@
 
     try {
       const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url ?? '');
-      if (url.includes('duolingo.com')) {
-        const clone = response.clone();
-        const text = await clone.text();
-        tryExtractAndPost(text, url);
-      }
+      // Перехватывать любые запросы — Duolingo делает fetch к своим же эндпоинтам
+      const clone = response.clone();
+      const text = await clone.text();
+      tryExtractAndPost(text, url);
     } catch (_) {}
 
     return response;
@@ -45,57 +47,74 @@
   };
 
   XMLHttpRequest.prototype.send = function (...args) {
-    if (this.__duoUrl && this.__duoUrl.includes('duolingo.com')) {
-      this.addEventListener('load', function () {
-        try {
-          tryExtractAndPost(this.responseText, this.__duoUrl);
-        } catch (_) {}
-      });
-    }
+    this.addEventListener('load', function () {
+      try {
+        tryExtractAndPost(this.responseText, this.__duoUrl || '');
+      } catch (_) {}
+    });
     return _origXHRSend.call(this, ...args);
   };
 
   // ──────────────────────────────────────────────
-  // Fallback: проверить window.__NEXT_DATA__ после загрузки
+  // Fallback: window.__NEXT_DATA__ и Redux store
   // ──────────────────────────────────────────────
 
   window.addEventListener('load', () => {
-    setTimeout(() => {
-      try {
-        if (window.__NEXT_DATA__) {
-          const words = extractVocabulary(window.__NEXT_DATA__);
-          if (words && words.length > 0) {
-            postWords(words);
-          }
-        }
-      } catch (_) {}
-    }, 1500);
+    setTimeout(checkPageData, 1500);
+    setTimeout(checkPageData, 4000); // Второй проход — для медленных страниц
   });
+
+  function checkPageData() {
+    // Next.js initial data
+    try {
+      if (window.__NEXT_DATA__) {
+        const words = extractVocabulary(window.__NEXT_DATA__);
+        if (words && words.length >= MIN_WORDS) { postWords(words); return; }
+      }
+    } catch (_) {}
+
+    // Redux / Zustand store (Duolingo использует Redux)
+    try {
+      const store = window.__store__ || window.store || window.__reduxStore__;
+      if (store?.getState) {
+        const words = extractVocabulary(store.getState());
+        if (words && words.length >= MIN_WORDS) { postWords(words); return; }
+      }
+    } catch (_) {}
+  }
 
   // ──────────────────────────────────────────────
   // Парсинг и поиск слов
   // ──────────────────────────────────────────────
 
   function tryExtractAndPost(text, url) {
-    if (!text || text[0] !== '{' && text[0] !== '[') return;
+    if (!text) return;
+    const first = text.trimStart()[0];
+    if (first !== '{' && first !== '[') return;
+
     try {
       const json = JSON.parse(text);
       const words = extractVocabulary(json);
-      if (words && words.length > 0) {
+      if (words && words.length >= MIN_WORDS) {
         postWords(words);
       }
     } catch (_) {}
   }
 
-  // Рекурсивно обходит JSON и ищет массивы, похожие на список слов
+  // Рекурсивно обходит JSON в поисках массива объектов, похожих на словарь
   function extractVocabulary(obj, depth) {
-    if (!obj || typeof obj !== 'object' || (depth ?? 0) > 8) return null;
+    if (!obj || typeof obj !== 'object' || (depth ?? 0) > 10) return null;
 
+    // Проверить массив напрямую
     if (Array.isArray(obj)) {
-      if (obj.length >= 3 && isVocabItem(obj[0])) {
-        const words = obj.map(normalizeWord).filter(Boolean);
-        if (words.length >= 3) return words;
+      if (obj.length >= MIN_WORDS) {
+        const score = vocabScore(obj);
+        if (score > 0) {
+          const words = obj.map(normalizeWord).filter(Boolean);
+          if (words.length >= MIN_WORDS) return words;
+        }
       }
+      // Рекурсия внутрь элементов массива
       for (const item of obj) {
         const result = extractVocabulary(item, (depth ?? 0) + 1);
         if (result) return result;
@@ -103,12 +122,23 @@
       return null;
     }
 
-    // Проверить значения объекта
-    for (const val of Object.values(obj)) {
-      if (Array.isArray(val) && val.length >= 3 && isVocabItem(val[0])) {
-        const words = val.map(normalizeWord).filter(Boolean);
-        if (words.length >= 3) return words;
+    // Проверить значения объекта — сначала те, что выглядят как списки слов
+    let best = null;
+    for (const [key, val] of Object.entries(obj)) {
+      if (Array.isArray(val) && val.length >= MIN_WORDS) {
+        const score = vocabScore(val);
+        if (score > 0) {
+          const words = val.map(normalizeWord).filter(Boolean);
+          if (words.length >= MIN_WORDS) {
+            if (!best || words.length > best.length) best = words;
+          }
+        }
       }
+    }
+    if (best) return best;
+
+    // Рекурсия в дочерние объекты
+    for (const val of Object.values(obj)) {
       if (val && typeof val === 'object' && !Array.isArray(val)) {
         const result = extractVocabulary(val, (depth ?? 0) + 1);
         if (result) return result;
@@ -118,19 +148,31 @@
     return null;
   }
 
-  // Определить, похож ли объект на запись словаря
-  function isVocabItem(obj) {
-    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
-    const keys = Object.keys(obj).join(' ').toLowerCase();
+  // Насколько массив похож на список слов (0 = точно не словарь, >0 = похоже)
+  function vocabScore(arr) {
+    if (!arr.length || typeof arr[0] !== 'object' || arr[0] === null) return 0;
 
-    const hasWord = /word|lexeme|token/.test(keys);
-    const hasTranslation = /translat|hint|meaning/.test(keys);
+    let hits = 0;
+    const sample = arr.slice(0, Math.min(5, arr.length));
 
-    return hasWord && hasTranslation;
+    for (const item of sample) {
+      if (!item || typeof item !== 'object') continue;
+      const keys = Object.keys(item).join(' ').toLowerCase();
+
+      const hasWord = /\bword\b|wordstring|word_string|lexeme|token/.test(keys);
+      const hasMeta = /translat|hint|meaning|skill|strength|lesson/.test(keys);
+
+      if (hasWord) hits += 2;
+      if (hasMeta) hits += 1;
+    }
+
+    return hits;
   }
 
-  // Привести объект к унифицированному формату
+  // Привести объект к унифицированному формату { word, translation, ... }
   function normalizeWord(item) {
+    if (!item || typeof item !== 'object') return null;
+
     const word = (
       item.wordString ??
       item.word_string ??
@@ -140,23 +182,25 @@
       ''
     ).trim();
 
-    if (!word || word.length < 1 || word.length > 60) return null;
+    if (!word || word.length < 1 || word.length > 80) return null;
+    // Отфильтровать числа и мусор
+    if (/^\d+$/.test(word)) return null;
 
     const rawTranslation =
       item.translationText ??
       item.translation ??
       item.hint ??
-      (Array.isArray(item.hints) ? item.hints[0] : '') ??
-      (Array.isArray(item.translations) ? item.translations[0] : '') ??
+      (Array.isArray(item.hints) ? item.hints[0] : null) ??
+      (Array.isArray(item.translations) ? item.translations[0] : null) ??
       '';
 
     const translation = typeof rawTranslation === 'string'
       ? rawTranslation
-      : Array.isArray(rawTranslation) ? rawTranslation[0] : '';
+      : (Array.isArray(rawTranslation) ? rawTranslation[0] : '');
 
     return {
       word,
-      translation: translation || '',
+      translation: String(translation || ''),
       transcription: item.pronunciation ?? item.tts ?? '',
       example:
         item.exampleSentence ??
@@ -175,10 +219,9 @@
     };
   }
 
-  // Отправить слова в ISOLATED world через postMessage
+  // Отправить слова в ISOLATED world через postMessage (с дедупликацией)
   function postWords(words) {
-    // Дедупликация: отправлять только если список изменился
-    const key = words.map(w => w.word).join(',');
+    const key = words.map(w => w.word).sort().join(',');
     if (window.__duoCtxLastKey === key) return;
     window.__duoCtxLastKey = key;
 

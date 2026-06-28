@@ -181,15 +181,20 @@ async function lookupWord(word, fromLang, sendResponse) {
 // ──────────────────────────────────────────────
 
 async function openWordsPage() {
-  const wordsUrl = 'https://www.duolingo.com/practice-hub/words';
+  // Приоритет URL: сначала practice-hub/words, если не грузится — /learn
+  // Interceptor перехватывает запросы на ЛЮБОЙ странице duolingo.com
+  const candidates = [
+    'https://www.duolingo.com/practice-hub/words',
+    'https://www.duolingo.com/learn'
+  ];
 
-  // Если вкладка уже открыта — переключиться на неё и перезагрузить
-  const existing = await chrome.tabs.query({ url: wordsUrl + '*' });
+  // Поискать уже открытую вкладку Duolingo
+  const existing = await chrome.tabs.query({ url: 'https://www.duolingo.com/*' });
   if (existing.length > 0) {
     await chrome.tabs.update(existing[0].id, { active: true });
     await chrome.tabs.reload(existing[0].id);
   } else {
-    await chrome.tabs.create({ url: wordsUrl });
+    await chrome.tabs.create({ url: candidates[0] });
   }
 }
 

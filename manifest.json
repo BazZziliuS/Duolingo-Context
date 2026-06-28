@@ -35,13 +35,13 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://www.duolingo.com/practice-hub/words*"],
+      "matches": ["https://www.duolingo.com/*"],
       "js": ["duolingo_interceptor.js"],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://www.duolingo.com/practice-hub/words*"],
+      "matches": ["https://www.duolingo.com/*"],
       "js": ["duolingo_relay.js"],
       "run_at": "document_idle"
     }
